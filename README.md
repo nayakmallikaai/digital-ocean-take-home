@@ -269,70 +269,36 @@ quality to the customer rather than presenting an ungrounded leaderboard.
 
 ## Longer-term production roadmap
 
-### Phase 1 — Production backend foundation
+### Phase 1 — Strengthen the comparison experience
 
-- Split the code into a stateless API, comparison orchestrator, DigitalOcean
-  inference adapter, policy layer, and result aggregator. Package it as a
-  container in [DigitalOcean Container Registry](https://docs.digitalocean.com/products/container-registry/)
-  and deploy the API and workers on
-  [DigitalOcean App Platform](https://docs.digitalocean.com/products/app-platform/).
-- Use App Platform readiness/liveness checks against `/healthz`, rolling deploys,
-  encrypted runtime secrets, and request- or P95-latency-based autoscaling. Keep
-  at least two API instances in production and test graceful shutdown while
-  comparisons are active.
-- Introduce authenticated tenant/workspace boundaries. Store comparison metadata,
-  model policy, audit events, and retention settings in
-  [DigitalOcean Managed PostgreSQL](https://docs.digitalocean.com/products/databases/postgresql/).
-  Store large customer-approved exports and evaluation datasets in private
-  [DigitalOcean Spaces](https://docs.digitalocean.com/products/spaces/) buckets
-  with short-lived access.
-- Use [DigitalOcean Managed Valkey](https://docs.digitalocean.com/products/databases/valkey/)
-  for rate limiting, idempotency keys,
-  short-lived result state, cancellation signals, and cache entries. Use TLS,
-  trusted sources, and client-side connection pooling; PostgreSQL remains the
-  durable source of truth.
-- Add per-tenant request, concurrency, token, and daily/monthly spend limits before
-  fan-out. Estimate maximum cost at admission time and reject or reduce fan-out
-  when a budget cannot cover the run.
-- Add explicit total and per-attempt deadlines, client disconnect cancellation,
-  circuit breakers per model, and retry only for selected 429/5xx/network errors
-  with bounded exponential backoff and jitter.
+- Save and share comparison runs
+- Add user accounts and team workspaces
+- Capture user preference feedback
+- Show cost alongside latency and token usage
+- Add reusable prompt and model presets
 
-### Phase 2 — Observability, security, and operational quality
+### Phase 2 — Workload-based evaluation
 
-- Generate a comparison ID and child request ID for every model call. Record
-  status, model/version, attempts, time to first token, end-to-end latency, input
-  and output tokens, estimated cost, and redaction counts—never credentials or
-  raw chain-of-thought.
-- Send structured App Platform logs to an approved destination, use **App Platform
-  alerts** for deployment/scaling failures and CPU/RAM/restarts, and add
-  [DigitalOcean Uptime](https://docs.digitalocean.com/products/uptime/) checks for
-  public health endpoints. Define SLOs for API
-  availability, comparison completion, P95 latency, timeout rate, and result-stream
-  reconnect success.
-- Add authentication, authorization, CSRF/origin controls, request-size and content
-  limits, key rotation, dependency/container scanning, least-privilege network
-  access, encryption in transit/at rest, audit trails, and configurable retention.
-- Add contract tests against DigitalOcean's model catalog, failure-injection tests,
-  concurrency/load tests, timeout/cancellation tests, and disaster-recovery drills.
-  Canary releases compare error, latency, and cost signals before full rollout.
+- Allow customers to build evaluation datasets from representative prompts
+- Expand the DigitalOcean Evaluations workflow with custom metrics and thresholds
+- Add human review for failed or borderline cases
+- Re-run evaluations when models, prompts, or policies change
+- Produce workload-specific model scorecards instead of a global leaderboard
 
-### Phase 3 — Evidence-based quality and release gates
+### Phase 3 — Explainable recommendations
 
-- Build versioned [DigitalOcean Evaluations](https://docs.digitalocean.com/products/inference/how-to/evaluate-models/)
-  using customer-approved datasets
-  split by task, language, risk, and traffic frequency. Measure correctness,
-  completeness, groundedness, harmfulness/safety, latency, tokens, and cost.
-- Treat automated judging as advisory. Calibrate it with blinded **human review**,
-  domain experts for high-impact use cases, inter-rater agreement, and documented
-  adjudication. Never expose evaluator chain-of-thought.
-- Establish release gates for new models, model versions, prompts, guardrails, and
-  routing policies. Block promotion when a star quality/safety metric regresses,
-  a critical safety case fails, latency exceeds its SLO, or cost exceeds budget.
-  Keep datasets and thresholds versioned so every decision is reproducible.
-- Use shadow traffic and canaries with redacted or synthetic inputs before sending
-  production traffic to a new configuration. Provide automatic rollback to the
-  last known-good model policy.
+- Recommend models based on the customer’s evaluation history and priorities
+- Support quality, latency, safety, and cost constraints
+- Explain the evidence behind each recommendation
+- Detect regressions when a model version changes
+
+### Phase 4 — Production routing and operations
+
+- Use DigitalOcean Inference Router to select models by workload and policy
+- Add fallback models and controlled rollouts
+- Introduce authentication, tenant isolation, persistent storage, rate limits, and budget controls
+- Add production monitoring for quality, latency, reliability, and cost
+
 
 The target production outcome is a tenant-specific, measurable policy that selects a suitable model for a defined
 workload within quality, safety, latency, reliability, and budget constraints.
