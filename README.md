@@ -69,8 +69,7 @@ render the 15 individual candidate responses or the evaluator's rationale.
 
 ![Aggregate progress for three DigitalOcean evaluation runs](docs/images/evaluation-live-progress.png)
 
-The default metrics are **Correctness** and **Completeness**. DigitalOcean's
-current catalog also supports **Ground Truth Faithfulness**, **Bias**,
+The default metrics are **Correctness** , **Completeness** , **Ground Truth Faithfulness**, **Bias**,
 **Toxicity**, and **PII Leakage**. Configure the desired subset with
 `DO_EVAL_METRICS`; all selected candidates use the same dataset, judge, metrics,
 system prompt, sampling settings, and token budget.
