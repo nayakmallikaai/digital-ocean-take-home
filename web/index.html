@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Compare DigitalOcean Serverless Inference models side by side.">
+  <title>Model FOMO Comparator</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header><a class="brand" href="/">DigitalOcean <span>Model Lab</span></a><span class="pill">Serverless Inference</span></header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">MODEL FOMO, SOLVED</p>
+      <h1>One prompt. Multiple perspectives.</h1>
+      <p class="lede">Compare response behavior across models without pretending there is one universal winner.</p>
+    </section>
+    <form id="compare-form" class="composer">
+      <label for="prompt">What do you want to ask?</label>
+      <textarea id="prompt" maxlength="20000" rows="5" placeholder="Explain when to use a message queue instead of a database…" required></textarea>
+      <div class="model-row">
+        <fieldset><legend>Select up to 3 models <span id="selection-count">3 selected</span></legend><div id="model-picker" class="model-picker"></div><small id="cutoff-note" class="cutoff-note"></small></fieldset>
+        <button id="run-button" type="submit"><span>Compare models</span><span aria-hidden="true">→</span></button>
+      </div>
+      <p id="form-error" class="error" role="alert"></p>
+    </form>
+    <section id="run-section" class="run-section" hidden>
+      <div class="section-title"><div><p class="eyebrow">LIVE RESULTS</p><h2>Models run in parallel</h2></div><div id="progress" class="progress" aria-live="polite"></div></div>
+      <div id="result-grid" class="result-grid"></div>
+      <section id="comparison" class="comparison" hidden></section>
+    </section>
+    <section class="recent"><div class="section-title"><div><p class="eyebrow">THIS BROWSER ONLY</p><h2>Recent comparisons</h2></div><button id="clear-history" class="text-button" type="button">Clear history</button></div><div id="history-list"></div></section>
+  </main>
+  <footer>Built for transparent model exploration · Prompts and history stay in this browser except when sent to DigitalOcean for inference.</footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>
