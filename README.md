@@ -69,8 +69,7 @@ render the 15 individual candidate responses or the evaluator's rationale.
 
 ![Aggregate progress for three DigitalOcean evaluation runs](docs/images/evaluation-live-progress.png)
 
-The default metrics are **Correctness** and **Completeness**. DigitalOcean's
-current catalog also supports **Ground Truth Faithfulness**, **Bias**,
+The default metrics are **Correctness** , **Completeness** , **Ground Truth Faithfulness**, **Bias**,
 **Toxicity**, and **PII Leakage**. Configure the desired subset with
 `DO_EVAL_METRICS`; all selected candidates use the same dataset, judge, metrics,
 system prompt, sampling settings, and token budget.
@@ -243,63 +242,6 @@ run is terminal, the app reports successful scores and metric summaries alongsid
 clear failed/timed-out states. It does not silently treat a failed run as a score
 of zero or claim that the highest-scoring candidate is universally best.
 
-Native Evaluations requires a separate `DIGITALOCEAN_TOKEN` personal access token
-with the necessary GenAI read/create scopes. `DO_INFERENCE_API_KEY` remains the
-narrower credential for interactive Serverless Inference. Both remain server-side.
-Clicking **Run 15-prompt evaluation** creates three candidate-plus-judge runs and
-may incur DigitalOcean usage charges.
-
-### Create the evaluation API token
-
-Create a DigitalOcean personal access token, not another model access key:
-
-1. Sign in to the DigitalOcean Control Panel.
-2. Go to **Account → API → Tokens**.
-3. Under **Personal access tokens**, click **Generate New Token**.
-4. Use a descriptive name such as `model-fomo-evaluations`, choose the shortest
-   practical expiration, and select **Custom Scopes**.
-5. Grant only the scopes this application needs:
-
-   - `genai:read`
-   - `genai:create`
-   - `regions:read`
-   - `sizes:read`
-   - `actions:read`
-
-   `genai:create` requires the four read scopes above. This application does not
-   need `genai:update` or `genai:delete` because it does not modify, cancel, or
-   delete evaluation resources.
-6. Click **Generate Token** and copy the secret immediately. DigitalOcean displays
-   it only once.
-7. Add it to the local `.env` file:
-
-   ```dotenv
-   DO_INFERENCE_API_KEY=your-existing-model-access-key
-   DIGITALOCEAN_TOKEN=your-new-personal-access-token
-   ```
-
-8. Restart the server so it loads the new environment variable:
-
-   ```bash
-   python3 multi_model_inference.py --serve --port 8002
-   ```
-
-Never paste either token into chat, browser code, screenshots, logs, or commits.
-The `.env` file is ignored by Git. Token scopes cannot be edited after creation;
-if DigitalOcean returns HTTP `403`, create a replacement token with the required
-scopes. See DigitalOcean's
-[personal access token guide](https://docs.digitalocean.com/reference/api/create-personal-access-token/)
-and [`genai:create` scope requirements](https://docs.digitalocean.com/reference/api/scopes/genai/create/).
-
-Optional configuration:
-
-```dotenv
-DO_EVAL_DATASET_UUID=uuid-of-a-previously-uploaded-dataset
-DO_EVAL_JUDGE_MODEL=qwen3.5-397b-a17b
-DO_EVAL_METRICS=correctness,completeness
-DO_EVAL_TIMEOUT=600
-```
-
 After the first successful upload, configuring `DO_EVAL_DATASET_UUID` avoids
 registering another copy after a server restart. Runs and datasets remain visible
 in the DigitalOcean control panel for auditability; this UI does not delete them.
@@ -316,8 +258,6 @@ in the DigitalOcean control panel for auditability; this UI does not delete them
 | Shared prompts and settings | Makes latency and length differences easy to explain for one run. | Models have different optimal parameters and context behavior. Store versioned per-model presets and compare them against a controlled baseline. |
 | Deterministic comparison | Adds no judge latency/cost and never presents subjective scoring as fact. | It measures operations, not correctness. Quality and safety belong in offline/controlled evaluations plus human review. |
 | Native DigitalOcean Evaluations for batch quality | Uses a versioned ground-truth dataset, managed judge workflow, metric catalog, and auditable runs instead of an ad hoc local judge. | Three candidates plus judge scoring add time and cost, and LLM judging remains advisory. Reuse datasets, apply evaluation budgets, gate model support, and calibrate with human review. |
-| Local-only history | Delivers useful recents without a database, account model, or retention risk on the server. | It cannot support teams, auditability, cross-device use, or recovery. Production persistence must be opt-in, encrypted, tenant-isolated, and governed by retention policy. |
-| Python standard-library server | Keeps setup dependency-free and makes the PoC easy to review. | It is not a production application server. Replace it with a supported framework/runtime, structured middleware, graceful shutdown, connection limits, and load testing. |
 
 ## Why there is no universally “best” model
 
@@ -329,93 +269,36 @@ quality to the customer rather than presenting an ungrounded leaderboard.
 
 ## Longer-term production roadmap
 
-### Phase 1 — Production backend foundation
+### Phase 1 — Strengthen the comparison experience
 
-- Split the code into a stateless API, comparison orchestrator, DigitalOcean
-  inference adapter, policy layer, and result aggregator. Package it as a
-  container in [DigitalOcean Container Registry](https://docs.digitalocean.com/products/container-registry/)
-  and deploy the API and workers on
-  [DigitalOcean App Platform](https://docs.digitalocean.com/products/app-platform/).
-- Use App Platform readiness/liveness checks against `/healthz`, rolling deploys,
-  encrypted runtime secrets, and request- or P95-latency-based autoscaling. Keep
-  at least two API instances in production and test graceful shutdown while
-  comparisons are active.
-- Introduce authenticated tenant/workspace boundaries. Store comparison metadata,
-  model policy, audit events, and retention settings in
-  [DigitalOcean Managed PostgreSQL](https://docs.digitalocean.com/products/databases/postgresql/).
-  Store large customer-approved exports and evaluation datasets in private
-  [DigitalOcean Spaces](https://docs.digitalocean.com/products/spaces/) buckets
-  with short-lived access.
-- Use [DigitalOcean Managed Valkey](https://docs.digitalocean.com/products/databases/valkey/)
-  for rate limiting, idempotency keys,
-  short-lived result state, cancellation signals, and cache entries. Use TLS,
-  trusted sources, and client-side connection pooling; PostgreSQL remains the
-  durable source of truth.
-- Add per-tenant request, concurrency, token, and daily/monthly spend limits before
-  fan-out. Estimate maximum cost at admission time and reject or reduce fan-out
-  when a budget cannot cover the run.
-- Add explicit total and per-attempt deadlines, client disconnect cancellation,
-  circuit breakers per model, and retry only for selected 429/5xx/network errors
-  with bounded exponential backoff and jitter.
+- Save and share comparison runs
+- Add user accounts and team workspaces
+- Capture user preference feedback
+- Show cost alongside latency and token usage
+- Add reusable prompt and model presets
 
-### Phase 2 — Observability, security, and operational quality
+### Phase 2 — Workload-based evaluation
 
-- Generate a comparison ID and child request ID for every model call. Record
-  status, model/version, attempts, time to first token, end-to-end latency, input
-  and output tokens, estimated cost, and redaction counts—never credentials or
-  raw chain-of-thought.
-- Send structured App Platform logs to an approved destination, use **App Platform
-  alerts** for deployment/scaling failures and CPU/RAM/restarts, and add
-  [DigitalOcean Uptime](https://docs.digitalocean.com/products/uptime/) checks for
-  public health endpoints. Define SLOs for API
-  availability, comparison completion, P95 latency, timeout rate, and result-stream
-  reconnect success.
-- Add authentication, authorization, CSRF/origin controls, request-size and content
-  limits, key rotation, dependency/container scanning, least-privilege network
-  access, encryption in transit/at rest, audit trails, and configurable retention.
-- Add contract tests against DigitalOcean's model catalog, failure-injection tests,
-  concurrency/load tests, timeout/cancellation tests, and disaster-recovery drills.
-  Canary releases compare error, latency, and cost signals before full rollout.
+- Allow customers to build evaluation datasets from representative prompts
+- Expand the DigitalOcean Evaluations workflow with custom metrics and thresholds
+- Add human review for failed or borderline cases
+- Re-run evaluations when models, prompts, or policies change
+- Produce workload-specific model scorecards instead of a global leaderboard
 
-### Phase 3 — Evidence-based quality and release gates
+### Phase 3 — Explainable recommendations
 
-- Build versioned [DigitalOcean Evaluations](https://docs.digitalocean.com/products/inference/how-to/evaluate-models/)
-  using customer-approved datasets
-  split by task, language, risk, and traffic frequency. Measure correctness,
-  completeness, groundedness, harmfulness/safety, latency, tokens, and cost.
-- Treat automated judging as advisory. Calibrate it with blinded **human review**,
-  domain experts for high-impact use cases, inter-rater agreement, and documented
-  adjudication. Never expose evaluator chain-of-thought.
-- Establish release gates for new models, model versions, prompts, guardrails, and
-  routing policies. Block promotion when a star quality/safety metric regresses,
-  a critical safety case fails, latency exceeds its SLO, or cost exceeds budget.
-  Keep datasets and thresholds versioned so every decision is reproducible.
-- Use shadow traffic and canaries with redacted or synthetic inputs before sending
-  production traffic to a new configuration. Provide automatic rollback to the
-  last known-good model policy.
+- Recommend models based on the customer’s evaluation history and priorities
+- Support quality, latency, safety, and cost constraints
+- Explain the evidence behind each recommendation
+- Detect regressions when a model version changes
 
-### Phase 4 — Routing instead of default three-model fan-out
+### Phase 4 — Production routing and operations
 
-- Feed evaluation and production telemetry into
-  [DigitalOcean Inference Router](https://docs.digitalocean.com/products/inference/how-to/use-inference-router/).
-  Define workload-specific routes for coding, support, extraction, writing, and
-  multilingual tasks, prioritizing optimal quality, cost efficiency, or speed as
-  appropriate.
-- Start in shadow mode: compare the router's chosen model against the existing
-  three-model fan-out and measure routing regret, quality, latency, and cost.
-  Promote gradually only after evaluation and human-review gates pass.
-- Use single-model routing for routine prompts, fall back to another model on
-  bounded retryable failure, and reserve parallel fan-out or human escalation for
-  low-confidence, high-risk, or high-value requests. This turns the comparator
-  from the steady-state architecture into the evidence-gathering and debugging
-  surface for a more efficient production router.
+- Use DigitalOcean Inference Router to select models by workload and policy
+- Add fallback models and controlled rollouts
+- Introduce authentication, tenant isolation, persistent storage, rate limits, and budget controls
+- Add production monitoring for quality, latency, reliability, and cost
 
-The target production outcome is not a global model leaderboard. It is a
-tenant-specific, measurable policy that selects a suitable model for a defined
+
+The target production outcome is a tenant-specific, measurable policy that selects a suitable model for a defined
 workload within quality, safety, latency, reliability, and budget constraints.
-
-## Security notes
-
-`.env`, generated reports, caches, and virtual environments
-are ignored by Git. Never put the access key in browser code, command output,
-screenshots, commits, or exported comparison JSON.
