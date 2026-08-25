@@ -242,63 +242,6 @@ run is terminal, the app reports successful scores and metric summaries alongsid
 clear failed/timed-out states. It does not silently treat a failed run as a score
 of zero or claim that the highest-scoring candidate is universally best.
 
-Native Evaluations requires a separate `DIGITALOCEAN_TOKEN` personal access token
-with the necessary GenAI read/create scopes. `DO_INFERENCE_API_KEY` remains the
-narrower credential for interactive Serverless Inference. Both remain server-side.
-Clicking **Run 15-prompt evaluation** creates three candidate-plus-judge runs and
-may incur DigitalOcean usage charges.
-
-### Create the evaluation API token
-
-Create a DigitalOcean personal access token, not another model access key:
-
-1. Sign in to the DigitalOcean Control Panel.
-2. Go to **Account → API → Tokens**.
-3. Under **Personal access tokens**, click **Generate New Token**.
-4. Use a descriptive name such as `model-fomo-evaluations`, choose the shortest
-   practical expiration, and select **Custom Scopes**.
-5. Grant only the scopes this application needs:
-
-   - `genai:read`
-   - `genai:create`
-   - `regions:read`
-   - `sizes:read`
-   - `actions:read`
-
-   `genai:create` requires the four read scopes above. This application does not
-   need `genai:update` or `genai:delete` because it does not modify, cancel, or
-   delete evaluation resources.
-6. Click **Generate Token** and copy the secret immediately. DigitalOcean displays
-   it only once.
-7. Add it to the local `.env` file:
-
-   ```dotenv
-   DO_INFERENCE_API_KEY=your-existing-model-access-key
-   DIGITALOCEAN_TOKEN=your-new-personal-access-token
-   ```
-
-8. Restart the server so it loads the new environment variable:
-
-   ```bash
-   python3 multi_model_inference.py --serve --port 8002
-   ```
-
-Never paste either token into chat, browser code, screenshots, logs, or commits.
-The `.env` file is ignored by Git. Token scopes cannot be edited after creation;
-if DigitalOcean returns HTTP `403`, create a replacement token with the required
-scopes. See DigitalOcean's
-[personal access token guide](https://docs.digitalocean.com/reference/api/create-personal-access-token/)
-and [`genai:create` scope requirements](https://docs.digitalocean.com/reference/api/scopes/genai/create/).
-
-Optional configuration:
-
-```dotenv
-DO_EVAL_DATASET_UUID=uuid-of-a-previously-uploaded-dataset
-DO_EVAL_JUDGE_MODEL=qwen3.5-397b-a17b
-DO_EVAL_METRICS=correctness,completeness
-DO_EVAL_TIMEOUT=600
-```
-
 After the first successful upload, configuring `DO_EVAL_DATASET_UUID` avoids
 registering another copy after a server restart. Runs and datasets remain visible
 in the DigitalOcean control panel for auditability; this UI does not delete them.
@@ -315,8 +258,6 @@ in the DigitalOcean control panel for auditability; this UI does not delete them
 | Shared prompts and settings | Makes latency and length differences easy to explain for one run. | Models have different optimal parameters and context behavior. Store versioned per-model presets and compare them against a controlled baseline. |
 | Deterministic comparison | Adds no judge latency/cost and never presents subjective scoring as fact. | It measures operations, not correctness. Quality and safety belong in offline/controlled evaluations plus human review. |
 | Native DigitalOcean Evaluations for batch quality | Uses a versioned ground-truth dataset, managed judge workflow, metric catalog, and auditable runs instead of an ad hoc local judge. | Three candidates plus judge scoring add time and cost, and LLM judging remains advisory. Reuse datasets, apply evaluation budgets, gate model support, and calibrate with human review. |
-| Local-only history | Delivers useful recents without a database, account model, or retention risk on the server. | It cannot support teams, auditability, cross-device use, or recovery. Production persistence must be opt-in, encrypted, tenant-isolated, and governed by retention policy. |
-| Python standard-library server | Keeps setup dependency-free and makes the PoC easy to review. | It is not a production application server. Replace it with a supported framework/runtime, structured middleware, graceful shutdown, connection limits, and load testing. |
 
 ## Why there is no universally “best” model
 
@@ -393,28 +334,5 @@ quality to the customer rather than presenting an ungrounded leaderboard.
   production traffic to a new configuration. Provide automatic rollback to the
   last known-good model policy.
 
-### Phase 4 — Routing instead of default three-model fan-out
-
-- Feed evaluation and production telemetry into
-  [DigitalOcean Inference Router](https://docs.digitalocean.com/products/inference/how-to/use-inference-router/).
-  Define workload-specific routes for coding, support, extraction, writing, and
-  multilingual tasks, prioritizing optimal quality, cost efficiency, or speed as
-  appropriate.
-- Start in shadow mode: compare the router's chosen model against the existing
-  three-model fan-out and measure routing regret, quality, latency, and cost.
-  Promote gradually only after evaluation and human-review gates pass.
-- Use single-model routing for routine prompts, fall back to another model on
-  bounded retryable failure, and reserve parallel fan-out or human escalation for
-  low-confidence, high-risk, or high-value requests. This turns the comparator
-  from the steady-state architecture into the evidence-gathering and debugging
-  surface for a more efficient production router.
-
-The target production outcome is not a global model leaderboard. It is a
-tenant-specific, measurable policy that selects a suitable model for a defined
+The target production outcome is a tenant-specific, measurable policy that selects a suitable model for a defined
 workload within quality, safety, latency, reliability, and budget constraints.
-
-## Security notes
-
-`.env`, generated reports, caches, and virtual environments
-are ignored by Git. Never put the access key in browser code, command output,
-screenshots, commits, or exported comparison JSON.
