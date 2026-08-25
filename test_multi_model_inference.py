@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch
 
+import digitalocean_evaluations as evals
 import multi_model_inference as app
 
 
@@ -71,6 +72,58 @@ class ComparisonTests(unittest.TestCase):
         result = app.call_model(app.BASE_URL, "secret", app.MODELS[0], "hello", 10, 1)
         self.assertEqual(result.status, "Failed")
         self.assertIn("400", result.error)
+
+
+class EvaluationTests(unittest.TestCase):
+    def test_committed_dataset_has_exactly_fifteen_ground_truth_rows(self):
+        raw = evals.validate_dataset()
+        self.assertEqual(len(raw.decode().splitlines()), 15)
+
+    def test_evaluation_requires_exactly_three_models(self):
+        self.assertEqual(app.validate_evaluation_models(app.MODELS[:3]), app.MODELS[:3])
+        with self.assertRaises(ValueError):
+            app.validate_evaluation_models(app.MODELS[:2])
+
+    def test_public_summary_does_not_expose_prompt_results_or_reasoning(self):
+        run = {
+            "status": "MODEL_EVALUATION_RUN_SUCCESSFUL",
+            "progress": {"judge_rows_evaluated": 15, "total_rows": 15},
+            "result_summary": {"overall_score_percent": 86, "total_duration_seconds": 42},
+            "results": [{"input": "private prompt", "output": "private answer", "reasoning": "hidden"}],
+        }
+        summary = evals.public_run_summary("model-a", run, {})
+        serialized = str(summary)
+        self.assertNotIn("private prompt", serialized)
+        self.assertNotIn("private answer", serialized)
+        self.assertNotIn("hidden", serialized)
+        self.assertEqual(summary["overall_score_percent"], 86)
+
+    def test_report_marks_scores_as_advisory(self):
+        report = evals.build_report([
+            {"model": "a", "status": "MODEL_EVALUATION_RUN_SUCCESSFUL", "overall_score_percent": 90},
+            {"model": "b", "status": "MODEL_EVALUATION_RUN_SUCCESSFUL", "overall_score_percent": 80},
+            {"model": "c", "status": "MODEL_EVALUATION_RUN_FAILED", "overall_score_percent": None},
+        ], "judge", {"metric": "Correctness"})
+        self.assertTrue(report["advisory"])
+        self.assertIn("a", report["summary"])
+
+    def test_native_evaluation_orchestrates_three_runs_and_returns_report(self):
+        models = app.MODELS[:3]
+        events = []
+        terminal_run = {
+            "status": "MODEL_EVALUATION_RUN_SUCCESSFUL",
+            "progress": {"judge_rows_evaluated": 15, "total_rows": 15},
+            "result_summary": {"overall_score_percent": 75, "total_duration_seconds": 12},
+        }
+        with patch.object(evals, "dataset_uuid", return_value="dataset"), \
+             patch.object(evals, "resolve_metrics", return_value=(["metric"], {"metric": "Correctness"})), \
+             patch.object(evals, "create_runs", return_value={model: f"run-{index}" for index, model in enumerate(models)}), \
+             patch.object(evals, "get_run", return_value=terminal_run) as get_run:
+            report = evals.run_evaluation("token", models, events.append, poll_seconds=0)
+        self.assertEqual(get_run.call_count, 3)
+        self.assertEqual(len(report["models"]), 3)
+        self.assertTrue(report["advisory"])
+        self.assertTrue(any(event["type"] == "evaluation_started" for event in events))
 
 
 if __name__ == "__main__":

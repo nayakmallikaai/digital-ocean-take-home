@@ -16,16 +16,27 @@
       <p class="lede">Compare response behavior across models without pretending there is one universal winner.</p>
     </section>
     <form id="compare-form" class="composer">
-      <label for="prompt">What do you want to ask?</label>
-      <textarea id="prompt" maxlength="20000" rows="5" placeholder="Explain when to use a message queue instead of a database…" required></textarea>
+      <div class="mode-toggle" role="radiogroup" aria-label="Run mode">
+        <label><input type="radio" name="run-mode" value="compare" checked><span>Compare one prompt</span></label>
+        <label><input type="radio" name="run-mode" value="evaluate"><span>Evaluate 15-prompt set</span></label>
+      </div>
+      <div id="prompt-fields">
+        <label for="prompt">What do you want to ask?</label>
+        <textarea id="prompt" maxlength="20000" rows="5" placeholder="Explain when to use a message queue instead of a database…" required></textarea>
+      </div>
+      <div id="evaluation-fields" class="evaluation-notice" hidden>
+        <strong>Native DigitalOcean Evaluation</strong>
+        <p>Runs the same 15 versioned prompts with ground truth over exactly three models. DigitalOcean Evaluations uses a judge to score the candidates; this view shows only aggregate progress and the final report, never individual prompt responses or judge rationale.</p>
+        <p>This creates three candidate-plus-judge evaluation runs and may incur DigitalOcean usage charges.</p>
+      </div>
       <div class="model-row">
         <fieldset><legend>Select up to 3 models <span id="selection-count">3 selected</span></legend><div id="model-picker" class="model-picker"></div><small id="cutoff-note" class="cutoff-note"></small></fieldset>
-        <button id="run-button" type="submit"><span>Compare models</span><span aria-hidden="true">→</span></button>
+        <button id="run-button" type="submit"><span id="run-button-label">Compare models</span><span aria-hidden="true">→</span></button>
       </div>
       <p id="form-error" class="error" role="alert"></p>
     </form>
     <section id="run-section" class="run-section" hidden>
-      <div class="section-title"><div><p class="eyebrow">LIVE RESULTS</p><h2>Models run in parallel</h2></div><div id="progress" class="progress" aria-live="polite"></div></div>
+      <div class="section-title"><div><p class="eyebrow" id="run-eyebrow">LIVE RESULTS</p><h2 id="run-title">Models run in parallel</h2></div><div id="progress" class="progress" aria-live="polite"></div></div>
       <div id="result-grid" class="result-grid"></div>
       <section id="comparison" class="comparison" hidden></section>
     </section>

@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, Iterable
 import urllib.error, urllib.request
 
+import digitalocean_evaluations as evaluations
+
 BASE_URL = "https://inference.do-ai.run/v1"
 MODELS = [
     "deepseek-3.2",
@@ -165,14 +167,20 @@ def validate_models(value: Any) -> list[str]:
     if len(set(value)) != len(value) or any(m not in MODELS for m in value): raise ValueError("The model selection contains an unknown or duplicate model.")
     return value
 
+def validate_evaluation_models(value: Any) -> list[str]:
+    models = validate_models(value)
+    if len(models) != MAX_SELECTED_MODELS: raise ValueError("Select exactly 3 models for an evaluation.")
+    return models
+
 class AppHandler(SimpleHTTPRequestHandler):
     server_version = "ModelFOMO/1.0"
     def __init__(self, *args: Any, **kwargs: Any) -> None: super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
     def do_GET(self) -> None:
-        if self.path == "/api/config": return self.send_json({"models": MODELS, "model_labels": MODEL_LABELS, "defaults": DEFAULT_MODELS, "max_selected": MAX_SELECTED_MODELS, "timeout_seconds": inference_timeout()})
+        if self.path == "/api/config": return self.send_json({"models": MODELS, "model_labels": MODEL_LABELS, "defaults": DEFAULT_MODELS, "max_selected": MAX_SELECTED_MODELS, "timeout_seconds": inference_timeout(), "evaluation_prompt_count": evaluations.PROMPT_COUNT, "evaluation_configured": bool(os.getenv("DIGITALOCEAN_TOKEN"))})
         if self.path == "/healthz": return self.send_json({"status": "ok"})
         super().do_GET()
     def do_POST(self) -> None:
+        if self.path == "/api/evaluate": return self.handle_evaluate()
         if self.path != "/api/compare": return self.send_error(404)
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -200,6 +208,23 @@ class AppHandler(SimpleHTTPRequestHandler):
                     results[result.model] = result; self.write_event({"type": "result", "result": result.public_dict()})
             self.write_event({"type": "comparison", "comparison": compare_results(results[m] for m in models)})
         except (BrokenPipeError, ConnectionResetError): pass
+    def handle_evaluate(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 20_000: raise ValueError("Invalid request size.")
+            body = json.loads(self.rfile.read(length)); models = validate_evaluation_models(body.get("models"))
+            token = os.getenv("DIGITALOCEAN_TOKEN")
+            if not token: raise RuntimeError("DigitalOcean Evaluations requires a server-side DIGITALOCEAN_TOKEN with GenAI read/write access.")
+        except (json.JSONDecodeError, ValueError, RuntimeError) as exc:
+            return self.send_json({"error": str(exc)}, 400)
+        self.send_response(200); self.send_header("Content-Type", "application/x-ndjson; charset=utf-8"); self.send_header("Cache-Control", "no-store"); self.send_header("X-Content-Type-Options", "nosniff"); self.end_headers()
+        try:
+            report = evaluations.run_evaluation(token, models, self.write_event, evaluation_timeout())
+            self.write_event({"type": "evaluation_report", "report": report})
+        except evaluations.EvaluationError as exc:
+            try: self.write_event({"type": "evaluation_error", "error": str(exc)})
+            except (BrokenPipeError, ConnectionResetError): pass
+        except (BrokenPipeError, ConnectionResetError): pass
     def send_json(self, payload: dict[str, Any], status: int = 200) -> None:
         encoded = json.dumps(payload).encode(); self.send_response(status); self.send_header("Content-Type", "application/json; charset=utf-8"); self.send_header("Content-Length", str(len(encoded))); self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(encoded)
     def write_event(self, payload: dict[str, Any]) -> None:
@@ -225,6 +250,11 @@ def inference_timeout() -> float:
     try: configured = float(os.getenv("DO_INFERENCE_TIMEOUT", str(DEFAULT_INFERENCE_TIMEOUT)))
     except ValueError: return DEFAULT_INFERENCE_TIMEOUT
     return min(max(configured, 1.0), 300.0)
+
+def evaluation_timeout() -> float:
+    try: configured = float(os.getenv("DO_EVAL_TIMEOUT", "600"))
+    except ValueError: return 600.0
+    return min(max(configured, 60.0), 1800.0)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compare DigitalOcean inference models."); parser.add_argument("prompt", nargs="?"); parser.add_argument("--serve", action="store_true"); parser.add_argument("--host", default="127.0.0.1"); parser.add_argument("--port", type=int, default=8000); parser.add_argument("--models", nargs="+", choices=MODELS, default=DEFAULT_MODELS); parser.add_argument("--max-tokens", type=int, default=512); parser.add_argument("--timeout", type=float, default=DEFAULT_INFERENCE_TIMEOUT); parser.add_argument("--json-output", type=Path); parser.add_argument("--base-url", default=os.getenv("DO_INFERENCE_BASE_URL", BASE_URL)); return parser.parse_args()
